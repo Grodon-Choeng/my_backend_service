@@ -1,5 +1,5 @@
 [project]
-name = "backend-service"
+name = "my-backend-service"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
@@ -8,4 +8,8 @@ dependencies = [
     "pydantic-settings>=2.10.1",
     "pytest>=8.4.1",
     "tortoise>=0.1.1",
+]
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=4.2.0",
 ]
