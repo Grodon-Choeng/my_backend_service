@@ -1,0 +1,11 @@
+[project]
+name = "backend-service"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.11.7",
+    "pydantic-settings>=2.10.1",
+    "pytest>=8.4.1",
+    "tortoise>=0.1.1",
+]
