@@ -1,7 +1,9 @@
 from typing import Optional
 
 import pytest
-from pydantic import ValidationError,Field
+from pydantic import ValidationError, Field
+from hypothesis import given, strategies as st
+
 from src.core.config import BaseSettings, refer_to_field
 
 
@@ -54,8 +56,55 @@ class TestConfig:
 
     def test_invalid_reference(self):
         """测试引用不存在的字段"""
-        with pytest.raises(ValidationError):
-            class InvalidSettings(BaseSettings):
-                bad_field: str = refer_to_field(refer_to="nonexistent_field")
 
+        class InvalidSettings(BaseSettings):
+            bad_field: str = refer_to_field(refer_to="nonexistent_field")
+
+        # Pydantic v2 doesn't raise ValidationError on definition, but on instantiation
+        # when it can't find the referenced field to get a value from.
+        # And since bad_field has no default, it will raise a validation error.
+        with pytest.raises(ValidationError):
             InvalidSettings()
+
+    def test_chained_references(self):
+        """测试链式引用 (c -> b -> a)"""
+
+        class ChainedSettings(BaseSettings):
+            field_a: Optional[str] = "value_a"
+            field_b: Optional[str] = refer_to_field(refer_to="field_a")
+            field_c: Optional[str] = refer_to_field(refer_to="field_b")
+
+        settings = ChainedSettings()
+        assert settings.field_a == "value_a"
+        assert settings.field_b == "value_a"
+        assert settings.field_c == "value_a"
+
+    def test_dotenv_loading(self, monkeypatch, tmp_path):
+        """测试从 .env 文件加载"""
+        # 创建一个临时的 .env 文件
+        dotenv_file = tmp_path / ".env"
+        dotenv_file.write_text("MAIN_FIELD=dotenv_value")
+
+        # 切换到临时目录，以便 Pydantic 能找到 .env 文件
+        monkeypatch.chdir(tmp_path)
+
+        settings = self.SampleSettings()
+        assert settings.main_field == "dotenv_value"
+
+
+@given(st.text(), st.one_of(st.none(), st.text()))
+def test_property_based_refer_to_field(main_value, linked_value):
+    """使用 Hypothesis 进行属性测试"""
+
+    class PropSettings(BaseSettings):
+        main_field: Optional[str]
+        linked_field: Optional[str] = refer_to_field(refer_to="main_field")
+
+    settings = PropSettings(main_field=main_value, linked_field=linked_value)
+
+    if linked_value is not None:
+        # 如果显式提供了值，则该值优先
+        assert settings.linked_field == linked_value
+    else:
+        # 否则，它应该引用 main_field 的值
+        assert settings.linked_field == main_value

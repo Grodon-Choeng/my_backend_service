@@ -6,10 +6,21 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.11.7",
     "pydantic-settings>=2.10.1",
-    "pytest>=8.4.1",
     "tortoise>=0.1.1",
+    "fastapi>=0.116.1",
+    "python-dotenv>=1.1.1",
 ]
 [project.optional-dependencies]
 dev = [
     "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "hypothesis>=6.136.3",
+    "coverage>=7.9.2",
+    "pytest-cov>=6.2.1",
+]
+test = [
+    "pytest>=8.4.1",
+    "hypothesis>=6.136.3",
+    "coverage>=7.9.2",
+    "pytest-cov>=6.2.1",
 ]
