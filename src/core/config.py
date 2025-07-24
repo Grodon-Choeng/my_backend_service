@@ -1,8 +1,10 @@
+import os
 from typing import Any, TypeVar
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings as PydanticBaseSettings
 from pydantic_settings import (
+    DotEnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
@@ -34,6 +36,7 @@ class BaseSettings(PydanticBaseSettings):
     Features:
         - Load config from .env and OS environment
         - Auto-fill fields based on other fields using [refer_to_field]
+        - Support for multiple, cascading configuration files via `CONFIG_FILES` env var.
     """
 
     model_config = SettingsConfigDict(
@@ -55,15 +58,29 @@ class BaseSettings(PydanticBaseSettings):
         Customize sources for reading settings values.
 
         Priority order:
-            1. Init values
-            2. Dotenv file
-            3. Environment variables
-            4. File secrets
+            1. Init values (highest priority)
+            2. Environment variables
+            3. Configuration files (specified in CONFIG_FILES, last file has highest priority)
+            4. Default .env file
+            5. File secrets (lowest priority)
         """
+        config_files_str = os.getenv("CONFIG_FILES")
+
+        custom_dotenv_sources = []
+        if config_files_str:
+            config_files = [path.strip() for path in config_files_str.split(",")]
+            # Create a source for each specified config file, reversing the list
+            # so that later files have higher priority (as they appear earlier in the tuple).
+            custom_dotenv_sources = [
+                DotEnvSettingsSource(settings_cls, env_file=path)
+                for path in reversed(config_files)
+            ]
+
         return (
             init_settings,
-            dotenv_settings,
             env_settings,
+            *custom_dotenv_sources,
+            dotenv_settings,  # This is the default .env source
             file_secret_settings,
         )
 
