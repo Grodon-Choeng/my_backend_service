@@ -1,3 +1,12 @@
+"""
+Base configuration classes for the application.
+
+This module provides enhanced configuration management capabilities built on top of
+Pydantic Settings. It supports loading configuration from multiple sources with
+customizable priority orders, including environment variables, .env files, and
+file secrets. It also includes features for linking fields and cascading configuration files.
+"""
+
 import os
 from typing import Any, TypeVar
 
@@ -60,9 +69,19 @@ class BaseSettings(PydanticBaseSettings):
         Priority order:
             1. Init values (highest priority)
             2. Environment variables
-            3. Configuration files (specified in CONFIG_FILES, last file has highest priority)
+            3. Configuration files (specified in CONFIG_FILES, last file has the highest priority)
             4. Default .env file
             5. File secrets (lowest priority)
+
+        Args:
+            settings_cls: The settings class being instantiated.
+            init_settings: Settings source for init values.
+            env_settings: Settings source for environment variables.
+            dotenv_settings: Settings source for .env files.
+            file_secret_settings: Settings source for file secrets.
+
+        Returns:
+            Tuple of settings sources in priority order.
         """
         config_files_str = os.getenv("CONFIG_FILES")
 
@@ -91,6 +110,12 @@ class BaseSettings(PydanticBaseSettings):
 
         This validator checks each field's metadata for a 'refer_to' reference.
         If the current field is empty, it will take the value from the linked field.
+
+        Args:
+            self: The settings instance being validated.
+
+        Returns:
+            The validated settings instance.
         """
         for field_name, model_field in self.__class__.model_fields.items():
             refer_key = (model_field.json_schema_extra or {}).get("refer_to")
