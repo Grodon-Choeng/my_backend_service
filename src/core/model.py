@@ -5,6 +5,7 @@ This module provides base model classes and mixins for database operations
 including timezone-aware datetime handling, timestamp tracking, and soft deletion.
 """
 
+from typing import Type, Any
 from datetime import datetime, timezone
 
 from tortoise import fields, models
@@ -16,7 +17,9 @@ class UTCDateTimeField(fields.DatetimeField):
     are stored in UTC timezone for consistency across the application.
     """
 
-    def to_db_value(self, value, instance):
+    def to_db_value(
+        self, value: datetime, instance: Type[models.Model] | models.Model
+    ) -> datetime:
         """
         Convert datetime to UTC before storing in database.
 
@@ -36,7 +39,7 @@ class UTCDateTimeField(fields.DatetimeField):
             dt = dt.astimezone(timezone.utc)
         return dt
 
-    def to_python_value(self, value):
+    def to_python_value(self, value: Any) -> datetime:
         """
         Convert database value to Python datetime with UTC timezone.
 
@@ -88,7 +91,7 @@ class SoftDeleteMixin(models.Model):
     class Meta:
         abstract = True
 
-    async def soft_delete(self, using_db=None):
+    async def soft_delete(self, using_db: bool = None) -> None:
         """
         Async version of delete method to perform soft delete.
 
@@ -102,10 +105,10 @@ class SoftDeleteMixin(models.Model):
         self.deleted_at = datetime.now(timezone.utc)
         return await self.save(using_db=using_db)
 
-    def restore(self):
+    async def restore(self) -> None:
         """
         Restore a soft deleted record.
         """
         self.is_deleted = False
         self.deleted_at = None
-        return self.save()
+        return await self.save()
