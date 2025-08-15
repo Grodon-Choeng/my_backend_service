@@ -5,10 +5,12 @@ This module provides base model classes and mixins for database operations
 including timezone-aware datetime handling, timestamp tracking, and soft deletion.
 """
 
-from typing import Type, Any
 from datetime import datetime, timezone
+from typing import Any, Type
 
 from tortoise import fields, models
+from tortoise.manager import Manager
+from tortoise.queryset import QuerySet
 
 
 class UTCDateTimeField(fields.DatetimeField):
@@ -32,10 +34,8 @@ class UTCDateTimeField(fields.DatetimeField):
         """
         dt = super().to_db_value(value, instance)
         if dt:
-            # If datetime is naive (no timezone info), assume it's local time
             if not dt.tzinfo:
                 dt = dt.astimezone()
-            # Convert to UTC for consistent storage
             dt = dt.astimezone(timezone.utc)
         return dt
 
@@ -49,7 +49,6 @@ class UTCDateTimeField(fields.DatetimeField):
         Returns:
             datetime: Python datetime object with UTC timezone
         """
-        # If we get a datetime without timezone, assume its UTC
         if isinstance(value, datetime) and value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         dt = super().to_python_value(value)
@@ -64,51 +63,44 @@ class TimestampMixin(models.Model):
     using timezone-aware UTC datetime values.
     """
 
-    #: When the record was created (autopopulated on creation)
     created_at: datetime = UTCDateTimeField(auto_now_add=True)
-
-    #: When the record was last updated (autopopulated on every update)
     updated_at: datetime = UTCDateTimeField(auto_now=True)
 
-    class Meta:
-        abstract = True
+
+class SoftDeleteQuerySet(QuerySet):
+    """
+    Custom QuerySet that by default only queries non-soft-deleted records.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._filters.update({"is_deleted": False})
 
 
 class SoftDeleteMixin(models.Model):
     """
     Soft delete mixin providing logical deletion capability.
 
-    Instead of physically removing records from the database, this mixin
-    marks them as deleted with a flag and records when the deletion occurred.
+    Models inheriting this mixin will gain the following features:
+    1. The `objects` manager returns only non-deleted records by default.
+    2. The `all_objects` manager can query all records, including deleted ones.
+    3. `soft_delete()` and `restore()` methods for performing the operations.
     """
 
-    #: Whether the record has been logically deleted
-    is_deleted = fields.BooleanField(default=False)
+    is_deleted = fields.BooleanField(default=False, index=True)
+    deleted_at = UTCDateTimeField(null=True, blank=True)
 
-    #: When the record was logically deleted (null if not deleted)
-    deleted_at = UTCDateTimeField(null=True)
+    objects = Manager(SoftDeleteQuerySet)
+    all_objects = Manager()
 
-    class Meta:
-        abstract = True
-
-    async def soft_delete(self, using_db: bool = None) -> None:
-        """
-        Async version of delete method to perform soft delete.
-
-        Args:
-            using_db: Database connection to use
-
-        Returns:
-            Instance of the model
-        """
+    async def soft_delete(self):
+        """Marks the instance as deleted."""
         self.is_deleted = True
         self.deleted_at = datetime.now(timezone.utc)
-        return await self.save(using_db=using_db)
+        await self.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
 
-    async def restore(self) -> None:
-        """
-        Restore a soft deleted record.
-        """
+    async def restore(self):
+        """Restores a soft-deleted instance."""
         self.is_deleted = False
         self.deleted_at = None
-        return await self.save()
+        await self.save(update_fields=["is_deleted", "deleted_at", "updated_at"])

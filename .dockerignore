@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Python virtual environment
+.venv
+
+# IDE and cache files
+.idea
+.vscode
+.ruff_cache
+.pytest_cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local environment files
+.env
+.env.*
+
+# Documentation and local files
+README.md
+LICENSE
+CONTRIBUTING.md
+CHANGELOG.md
+
+# Test files
+tests/

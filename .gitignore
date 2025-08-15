@@ -81,3 +81,4 @@ dmopy.json
 
 # pytype static analyzer
 .pytype/
+/migrations

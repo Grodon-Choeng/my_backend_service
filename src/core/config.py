@@ -25,6 +25,10 @@ def refer_to_field(*, refer_to: str, default: Any = None, **kwargs):
     """
     Create a field that can be referred to another field's value.
 
+    This function works in conjunction with the `_fill_linked_fields` validator
+    in the `BaseSettings` class. It attaches metadata to a field, which the
+    validator then uses to populate the field's value from another field.
+
     Args:
         refer_to: The name of the field to refer from.
         default: Default value if no link is available.
@@ -117,6 +121,7 @@ class BaseSettings(PydanticBaseSettings):
         Returns:
             The validated settings instance.
         """
+        # This validator implements the logic for the `refer_to_field` function.
         for field_name, model_field in self.__class__.model_fields.items():
             refer_key = (model_field.json_schema_extra or {}).get("refer_to")
             if refer_key:

@@ -6,11 +6,15 @@ It includes settings for databases, security, CORS, and other application-level 
 The configuration values can be loaded from environment variables, .env files, or use default values.
 """
 
-from pydantic_settings import BaseSettings as PydanticBaseSettings
-from pydantic import Field, computed_field, MySQLDsn, RedisDsn
+import os
 
+from dotenv import load_dotenv
+from pydantic import Field, MySQLDsn, RedisDsn, model_validator
+from pydantic_settings import BaseSettings as PydanticBaseSettings
 
 from src.core.config import BaseSettings, refer_to_field
+
+load_dotenv()
 
 
 class RedisSettings(PydanticBaseSettings):
@@ -21,17 +25,16 @@ class RedisSettings(PydanticBaseSettings):
     PASSWORD: str | None = None
     DATABASE: int = 0
 
-    @computed_field
-    @property
-    def url(self) -> RedisDsn:
-        """
-        Generate Redis connection URL automatically.
+    url: RedisDsn | None = None
 
-        Returns:
-            RedisDsn: The Redis connection URL.
-        """
-        password = f":{self.PASSWORD}@" if self.PASSWORD else ""
-        return RedisDsn(f"redis://{password}{self.HOST}:{self.PORT}/{self.DATABASE}")
+    @model_validator(mode="after")
+    def set_url(self) -> "RedisSettings":
+        if not self.url:
+            password = f":{self.PASSWORD}@" if self.PASSWORD else ""
+            self.url = RedisDsn(
+                f"redis://{password}{self.HOST}:{self.PORT}/{self.DATABASE}"
+            )
+        return self
 
 
 class MysqlSettings(PydanticBaseSettings):
@@ -43,29 +46,24 @@ class MysqlSettings(PydanticBaseSettings):
     PASSWORD: str | None = None
     DATABASE: str = "app"
 
-    @computed_field
-    @property
-    def url(self) -> MySQLDsn:
-        """
-        Generate MySQL connection URL automatically.
+    url: MySQLDsn | None = None
 
-        Returns:
-            MySQLDsn: The MySQL connection URL.
-        """
-        password = f":{self.PASSWORD}" if self.PASSWORD else ""
-        auth = f"{self.USERNAME}{password}@" if self.USERNAME else ""
-        return MySQLDsn(f"mysql://{auth}{self.HOST}:{self.PORT}/{self.DATABASE}")
+    @model_validator(mode="after")
+    def set_url(self) -> "MysqlSettings":
+        if not self.url:
+            password = f":{self.PASSWORD}" if self.PASSWORD else ""
+            auth = f"{self.USERNAME}{password}@" if self.USERNAME else ""
+            self.url = MySQLDsn(
+                f"mysql://{auth}{self.HOST}:{self.PORT}/{self.DATABASE}"
+            )
+        return self
 
 
 class Settings(BaseSettings):
     """
     Main configuration class that manages all application settings.
-
-    This class consolidates all application configuration into a single place,
-    making it easy to manage and access settings throughout the application.
     """
 
-    # ⚙️ Application core configuration
     PROJECT_NAME: str = "FastAPI Backend"
     DEBUG: bool = Field(default=False, description="Enable or disable debug mode")
     ENVIRONMENT: str = Field(
@@ -73,32 +71,48 @@ class Settings(BaseSettings):
         description="Runtime environment (development, staging, production)",
     )
     API_V1_STR: str = "/api/v1"
-
-    # 🔒 Security and authentication configuration
     SECRET_KEY: str = Field(
         description="Secret key used for JWT signing and other operations, must be set!"
     )
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-
-    # 📦 Database configuration (Tortoise-ORM)
-    DATABASE_URL: MySQLDsn = Field(description="Main database connection URL")
-    DATABASE_MODELS: list[str] = ["src.models", "aerich.models"]
-
-    # 🔗 Test database configuration (using refer_to_field to automatically reference main database configuration)
-    TEST_DATABASE_URL: MySQLDsn | None = refer_to_field(refer_to="DATABASE_URL")
-
-    # 🔗 Redis configuration (using nested model)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    DATABASE_MODELS: list[str] = ["src.core.model"]
+    TEST_DATABASE_URL: MySQLDsn | None = refer_to_field(refer_to="MYSQL.url")
     REDIS: RedisSettings = RedisSettings()
-
-    # 🔗 MySQL configuration (using nested model)
     MYSQL: MysqlSettings = MysqlSettings()
+    BACKEND_CORS_ORIGINS: list[str] | str = ["*"]
 
-    # 🌐 CORS configuration
-    BACKEND_CORS_ORIGINS: list[str] = [
-        "*"
-    ]  # In production, this should be configured with specific frontend domains
+    @model_validator(mode="after")
+    def set_dynamic_fields(self) -> "Settings":
+        if self.ENVIRONMENT == "development":
+            self.DEBUG = True
+        if isinstance(self.BACKEND_CORS_ORIGINS, str):
+            self.BACKEND_CORS_ORIGINS = [
+                origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",")
+            ]
+        if self.ENVIRONMENT == "production" and self.BACKEND_CORS_ORIGINS == ["*"]:
+            self.BACKEND_CORS_ORIGINS = []
+        return self
 
 
-# 🚀 Export a globally available configuration instance
 settings = Settings()
+
+# A static dictionary for Aerich, reading directly from environment variables.
+# This avoids Pydantic's loading timing issues with Aerich.
+DB_URL = "mysql://{user}:{password}@{host}:{port}/{db_name}".format(
+    user=os.getenv("MYSQL_USERNAME", "root"),
+    password=os.getenv("MYSQL_PASSWORD", "password"),
+    host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+    port=os.getenv("MYSQL_PORT", 3306),
+    db_name=os.getenv("MYSQL_DATABASE", "app"),
+)
+
+TORTOISE_ORM = {
+    "connections": {"default": DB_URL},
+    "apps": {
+        "models": {
+            "models": ["src.core.model", "aerich.models"],
+            "default_connection": "default",
+        },
+    },
+}
