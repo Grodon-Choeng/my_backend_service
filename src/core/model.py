@@ -10,7 +10,6 @@ from typing import Any, Type
 
 from tortoise import fields, models
 from tortoise.manager import Manager
-from tortoise.queryset import QuerySet
 
 
 class UTCDateTimeField(fields.DatetimeField):
@@ -67,14 +66,9 @@ class TimestampMixin(models.Model):
     updated_at: datetime = UTCDateTimeField(auto_now=True)
 
 
-class SoftDeleteQuerySet(QuerySet):
-    """
-    Custom QuerySet that by default only queries non-soft-deleted records.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._filters.update({"is_deleted": False})
+class SoftDeleteManager(Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_deleted=False)
 
 
 class SoftDeleteMixin(models.Model):
@@ -87,10 +81,10 @@ class SoftDeleteMixin(models.Model):
     3. `soft_delete()` and `restore()` methods for performing the operations.
     """
 
-    is_deleted = fields.BooleanField(default=False, index=True)
+    is_deleted = fields.BooleanField(default=False, db_index=True)
     deleted_at = UTCDateTimeField(null=True, blank=True)
 
-    objects = Manager(SoftDeleteQuerySet)
+    objects = SoftDeleteManager()
     all_objects = Manager()
 
     async def soft_delete(self):

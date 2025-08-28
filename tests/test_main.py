@@ -1,51 +1,45 @@
 import pytest
-from fastapi import FastAPI
 from httpx import AsyncClient
-
 from src.main import app
+from src.core.context import application_context, AppContext
+from fakeredis.aioredis import FakeRedis
+from contextlib import asynccontextmanager
 
-# Mark all tests in this file as asyncio tests
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.fixture
-def test_app() -> FastAPI:
-    """Fixture to provide the FastAPI app instance."""
-    # In a real application, you might override dependencies here for testing
-    return app
+@asynccontextmanager
+async def mock_application_context():
+    redis_client = FakeRedis()
+    ctx = AppContext(redis=redis_client)
+    try:
+        yield ctx
+    finally:
+        await redis_client.close()
 
 
-async def test_root(test_app: FastAPI):
-    """Test the root endpoint."""
-    async with AsyncClient(app=test_app, base_url="http://test") as client:
+async def test_root():
+    app.dependency_overrides[application_context] = mock_application_context
+    async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.get("/")
     assert response.status_code == 200
     assert response.json() == {"message": "Hello, FastAPI!"}
+    app.dependency_overrides.clear()
 
 
-async def test_ping_redis_mocked(test_app: FastAPI):
-    """Test the redis ping endpoint with a mocked context."""
-    # This test demonstrates how to mock parts of the context for unit testing
-    from redis.asyncio import Redis
-
-    from src.core.context import AppContext
-    from src.main import get_context
-
-    class MockRedis(Redis):
-        async def ping(self, *args, **kwargs):
-            return True  # Simulate a successful ping
-
-    def get_mock_context() -> AppContext:
-        return AppContext(redis=MockRedis())
-
-    # Override the dependency for the duration of this test
-    test_app.dependency_overrides[get_context] = get_mock_context
-
-    async with AsyncClient(app=test_app, base_url="http://test") as client:
+async def test_ping_redis():
+    app.dependency_overrides[application_context] = mock_application_context
+    async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.get("/ping-redis")
-
     assert response.status_code == 200
     assert response.json() == {"redis_ok": True}
+    app.dependency_overrides.clear()
 
-    # Clean up the override after the test
-    del test_app.dependency_overrides[get_context]
+
+async def test_ping_db():
+    app.dependency_overrides[application_context] = mock_application_context
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.get("/ping-db")
+    assert response.status_code == 200
+    assert response.json() == {"db_ok": True}
+    app.dependency_overrides.clear()

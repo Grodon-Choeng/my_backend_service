@@ -24,7 +24,7 @@ def create_redis_with_debug_logger(
         return inner
 
     redis = Redis(*args, **kwargs)
-    for command in redis.get_commands():
+    for command in redis.get_commands():  # type: ignore[attr-defined]
         setattr(redis, command, wrapper(getattr(redis, command)))
     return redis
 
