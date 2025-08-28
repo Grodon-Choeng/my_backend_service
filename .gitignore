@@ -82,3 +82,4 @@ dmopy.json
 # pytype static analyzer
 .pytype/
 /migrations
+.DS_Store
